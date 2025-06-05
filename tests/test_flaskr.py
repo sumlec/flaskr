@@ -144,6 +144,77 @@ class TestFlaskr:
             # the database state is not guaranteed. In a real-world scenario,
             # you might want to set up a known database state before running this test.
 
+    def test_delete_entry(self):
+        """
+        Test the delete_entry function to ensure it correctly deletes an entry from the database.
+        """
+        with app.test_client() as client:
+            # Login first
+            client.post('/login', data={
+                'username': app.config['USERNAME'],
+                'password': app.config['PASSWORD']
+            })
+            
+            # Add a test entry
+            client.post('/add', data={
+                'title': 'Test Entry',
+                'text': 'This is a test entry to be deleted.'
+            })
+            
+            # Get the ID of the entry we just added
+            with app.app_context():
+                db = get_db()
+                entry = db.execute('SELECT id FROM entries WHERE title = ?', ['Test Entry']).fetchone()
+                entry_id = entry['id']
+            
+            # Delete the entry
+            response = client.post(f'/delete/{entry_id}', follow_redirects=True)
+            
+            # Check if the response contains the success message
+            assert b'Entry was successfully deleted' in response.data
+            
+            # Verify the entry is no longer in the database
+            with app.app_context():
+                db = get_db()
+                entry = db.execute('SELECT * FROM entries WHERE id = ?', [entry_id]).fetchone()
+                assert entry is None
+
+    def test_delete_entry_unauthorized(self):
+        """
+        Test that an unauthorized user cannot delete entries.
+        """
+        with app.test_client() as client:
+            # Add a test entry as an authorized user
+            client.post('/login', data={
+                'username': app.config['USERNAME'],
+                'password': app.config['PASSWORD']
+            })
+            
+            client.post('/add', data={
+                'title': 'Test Entry',
+                'text': 'This is a test entry.'
+            })
+            
+            # Get the ID of the entry we just added
+            with app.app_context():
+                db = get_db()
+                entry = db.execute('SELECT id FROM entries WHERE title = ?', ['Test Entry']).fetchone()
+                entry_id = entry['id']
+            
+            # Logout
+            client.get('/logout')
+            
+            # Try to delete the entry without being logged in
+            response = client.post(f'/delete/{entry_id}')
+            
+            # Should get a 401 Unauthorized response
+            assert response.status_code == 401
+            
+            # Verify the entry is still in the database
+            with app.app_context():
+                db = get_db()
+                entry = db.execute('SELECT * FROM entries WHERE id = ?', [entry_id]).fetchone()
+                assert entry is not None
 
 
 class AuthActions(object):
